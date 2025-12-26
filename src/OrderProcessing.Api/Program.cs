@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using OrderProcessing.Api.Data;
 using OrderProcessing.Api.Repositories;
 using OrderProcessing.Domain.Repositories;
 using OrderProcessing.Domain.Workflows;
@@ -16,9 +18,15 @@ builder.Services.AddOpenApiDocument(config =>
     config.Description = "API pentru procesarea comenzilor - DDD Lab Project";
 });
 
-// Register repositories as Singleton to keep data in memory
+// Configure DbContext with SQL Server
+builder.Services.AddDbContext<OrderProcessingDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Register repositories
+// Use InMemory for Products (no database needed)
 builder.Services.AddSingleton<IProductsRepository, InMemoryProductsRepository>();
-builder.Services.AddSingleton<IOrdersRepository, InMemoryOrdersRepository>();
+// Use SQL for Orders (persistent storage)
+builder.Services.AddScoped<IOrdersRepository, SqlOrdersRepository>();
 
 // Register workflow
 builder.Services.AddScoped<PlaceOrderWorkflow>();
