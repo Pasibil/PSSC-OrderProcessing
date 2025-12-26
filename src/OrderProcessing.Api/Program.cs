@@ -1,14 +1,20 @@
 using OrderProcessing.Api.Repositories;
 using OrderProcessing.Domain.Repositories;
 using OrderProcessing.Domain.Workflows;
-using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddOpenApi();
+
+// Add Swagger with NSwag
+builder.Services.AddOpenApiDocument(config =>
+{
+    config.Title = "Order Processing API";
+    config.Version = "v1";
+    config.Description = "API pentru procesarea comenzilor - DDD Lab Project";
+});
 
 // Register repositories
 builder.Services.AddScoped<IProductsRepository, InMemoryProductsRepository>();
@@ -22,8 +28,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.UseOpenApi();
+    app.UseSwaggerUi();
 }
 
 app.UseHttpsRedirection();
