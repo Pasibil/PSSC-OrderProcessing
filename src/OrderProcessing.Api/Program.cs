@@ -16,9 +16,9 @@ builder.Services.AddOpenApiDocument(config =>
     config.Description = "API pentru procesarea comenzilor - DDD Lab Project";
 });
 
-// Register repositories
-builder.Services.AddScoped<IProductsRepository, InMemoryProductsRepository>();
-builder.Services.AddScoped<IOrdersRepository, InMemoryOrdersRepository>();
+// Register repositories as Singleton to keep data in memory
+builder.Services.AddSingleton<IProductsRepository, InMemoryProductsRepository>();
+builder.Services.AddSingleton<IOrdersRepository, InMemoryOrdersRepository>();
 
 // Register workflow
 builder.Services.AddScoped<PlaceOrderWorkflow>();
