@@ -1,6 +1,7 @@
 using OrderProcessing.Api.Repositories;
 using OrderProcessing.Domain.Repositories;
 using OrderProcessing.Domain.Workflows;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
