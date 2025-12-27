@@ -45,22 +45,51 @@ Ultimul pas în proces:
 
 ## 🔄 Comunicarea Între Module
 
-Modulele nu comunică direct între ele, ci folosesc un sistem de **evenimente asincrone** (mesaje). De exemplu:
-- Când Order Taking plasează o comandă → trimite eveniment "OrderPlaced"
-- Invoicing primește acest eveniment → generează factura → trimite eveniment "InvoiceCreated"
-- Shipping primește acest eveniment → pregătește expedierea
+Modulele nu comunică direct între ele, ci folosesc **Azure Service Bus** pentru evenimente asincrone:
 
-Acest mod de comunicare face ca sistemul să fie:
-- **Rezistent** - dacă un modul se blochează, celelalte continuă să funcționeze
-- **Scalabil** - fiecare modul poate fi rulat pe servere diferite
-- **Ușor de întreținut** - poți modifica un modul fără să afectezi celelalte
+### Arhitectură Implementată
+```
+Order Processing API (port 5259)
+    |
+    | publică OrderPlacedEvent
+    v
+Azure Service Bus Topic: "orders"
+    |
+    ├─> Subscription: invoicing-subscription
+    |       |
+    |       v
+    |   Invoicing Worker (background service)
+    |       |
+    |       | apelează
+    |       v
+    |   Invoicing API (port 5260) → generează Invoice
+    |
+    └─> Subscription: shipping-subscription
+            |
+            v
+        Shipping Worker (background service)
+            |
+            | apelează
+            v
+        Shipping API (port 5261) → creează Shipment
+```
+
+### Beneficii
+- **Rezistent** - dacă un worker se oprește, mesajele rămân în queue și sunt procesate când revine
+- **Scalabil** - poți rula multiple instanțe ale fiecărui worker pentru procesare paralelă
+- **Ușor de întreținut** - fiecare worker este independent și poate fi actualizat separat
+- **Eventual Consistency** - workers procesează când sunt disponibili, fără să blocheze API-ul
+- **CloudEvents Standard** - folosim format standardizat CNCF pentru evenimente
 
 ## 🛠️ Tehnologii Folosite
 
-- **Limbaj**: C# cu .NET 8.0 (framework modern Microsoft)
+- **Limbaj**: C# cu .NET 9.0 (framework modern Microsoft)
 - **API**: ASP.NET Core Web API (pentru comunicarea cu aplicații externe)
+- **Message Broker**: Azure Service Bus Standard tier (pentru evenimente asincrone)
+- **Event Format**: CloudEvents 2.8.0 (standard CNCF pentru evenimente)
+- **Worker Services**: .NET Background Services (pentru procesare evenimente)
 - **Bază de date**: SQL Server cu Entity Framework Core (pentru stocare date)
-- **Reziliență**: Polly (pentru gestionarea erorilor și retry-uri automate)
+- **Securitate**: User Secrets (pentru connection strings sensibile)
 - **Documentație API**: Swagger/OpenAPI (interfață grafică pentru testare)
 
 ## 📊 Domain-Driven Design
@@ -134,25 +163,43 @@ Proiectul este organizat modular pentru claritate și separare a responsabilită
 
 ```
 Proiect-Implementare/
-├── README.md                          # Acest fișier - introducere în proiect
-├── IMPLEMENTATION_GUIDE.md            # Ghid detaliat de implementare
-├── .gitignore                         # Fișiere excluse din Git
-├── OrderProcessing.sln                # Solution Visual Studio
-├── docs/                              # Documentație
-│   ├── EventStorming.md              # Diagrame și evenimente de business
-│   └── DesignDecisions.md            # Decizii de arhitectură
-├── src/                               # Cod sursă
-│   ├── OrderProcessing.Domain/       # Domain Layer - logica de business
-│   │   ├── Models/                   # Value Objects și Entities
-│   │   ├── Operations/               # Operații de domeniu
-│   │   ├── Workflows/                # Workflow-uri complete
-│   │   ├── Repositories/             # Interfețe pentru date
-│   │   └── Exceptions/               # Excepții specifice domeniului
-│   ├── OrderProcessing.Api/          # API pentru Order Taking
-│   ├── OrderProcessing.InvoicingApi/ # API pentru Invoicing
-│   └── OrderProcessing.ShippingApi/  # API pentru Shipping
-└── sql/                               # Script-uri bază de date
+├── README.md                                  # Acest fișier - introducere
+├── IMPLEMENTATION_GUIDE.md                    # Ghid implementare
+├── AZURE_SETUP.md                             # ⭐ Setup Azure Service Bus
+├── .gitignore                                 # Fișiere excluse din Git
+├── OrderProcessing.sln                        # Solution Visual Studio
+├── docs/                                      # Documentație
+│   ├── EventStorming.md                      # Evenimente de business
+│   ├── DesignDecisions.md                    # Decizii arhitectură
+│   ├── AZURE_SERVICE_BUS_SETUP.md            # Setup Azure detaliat
+│   ├── EVENT_ARCHITECTURE_SUMMARY.md         # Arhitectură evenimente
+│   └── TESTE_FINALE.md                       # Ghid testare completă
+├── src/                                       # Cod sursă
+│   ├── OrderProcessing.Domain/               # Domain Layer
+│   │   ├── Models/                           # Value Objects
+│   │   ├── Operations/                       # Operații domeniu
+│   │   ├── Workflows/                        # Workflows
+│   │   ├── Repositories/                     # Interfețe persistență
+│   │   └── Exceptions/                       # Excepții domeniu
+│   ├── OrderProcessing.Events/               # ⭐ Event abstractions
+│   │   ├── IEventSender.cs
+│   │   ├── IEventListener.cs
+│   │   ├── IEventHandler.cs
+│   │   └── AbstractEventHandler.cs
+│   ├── OrderProcessing.Events.ServiceBus/    # ⭐ Azure Service Bus impl
+│   │   ├── ServiceBusTopicEventSender.cs
+│   │   └── ServiceBusTopicEventListener.cs
+│   ├── OrderProcessing.Dto/                  # ⭐ Event contracts
+│   │   └── OrderPlacedEvent.cs
+│   ├── OrderProcessing.Api/                  # Order Taking API (5259)
+│   ├── OrderProcessing.Invoicing/            # Invoicing API (5260)
+│   ├── OrderProcessing.Invoicing.Worker/     # ⭐ Invoicing Worker
+│   ├── OrderProcessing.Shipping/             # Shipping API (5261)
+│   └── OrderProcessing.Shipping.Worker/      # ⭐ Shipping Worker
+└── sql/                                       # Script-uri DB
     └── create-db.sql
+
+⭐ = Proiecte noi pentru Event-Driven Architecture
 ```
 
 ## 🎓 Concepte Învățate
@@ -182,21 +229,55 @@ Acest proiect demonstrează:
 
 ## 🔧 Comenzi Utile
 
+### Configurare Inițială
+```bash
+# Configurare Azure Service Bus connection string
+# Vezi AZURE_SETUP.md pentru detalii complete
+dotnet user-secrets set "ServiceBus:ConnectionString" "YOUR_CONNECTION_STRING" --project src/OrderProcessing.Api/OrderProcessing.Api.csproj
+dotnet user-secrets set "ServiceBus:ConnectionString" "YOUR_CONNECTION_STRING" --project src/OrderProcessing.Invoicing.Worker/OrderProcessing.Invoicing.Worker.csproj
+dotnet user-secrets set "ServiceBus:ConnectionString" "YOUR_CONNECTION_STRING" --project src/OrderProcessing.Shipping.Worker/OrderProcessing.Shipping.Worker.csproj
+```
+
+### Build și Run
 ```bash
 # Compilare proiect
 dotnet build
 
-# Rulare API principal
+# Rulare Order Processing API (Terminal 1)
 dotnet run --project src/OrderProcessing.Api
 
-# Rulare toate microservices
-dotnet run --project src/OrderProcessing.Api &
-dotnet run --project src/OrderProcessing.InvoicingApi &
-dotnet run --project src/OrderProcessing.ShippingApi &
+# Rulare Invoicing API (Terminal 2)
+dotnet run --project src/OrderProcessing.Invoicing
 
-# Testare
-dotnet test
+# Rulare Shipping API (Terminal 3)
+dotnet run --project src/OrderProcessing.Shipping
 
+# Rulare Invoicing Worker (Terminal 4)
+dotnet run --project src/OrderProcessing.Invoicing.Worker
+
+# Rulare Shipping Worker (Terminal 5)
+dotnet run --project src/OrderProcessing.Shipping.Worker
+```
+
+### Testare
+```powershell
+# Plasare comandă
+$body = @{
+    customerName = "John Doe"
+    customerEmail = "john@example.com"
+    orderLines = @(@{ productCode = "LAPTOP-001"; quantity = 1 })
+} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:5259/api/orders" -Method Post -Body $body -ContentType "application/json"
+
+# Verificare facturi
+Invoke-RestMethod -Uri "http://localhost:5260/api/invoices" -Method Get
+
+# Verificare shipments
+Invoke-RestMethod -Uri "http://localhost:5261/api/shipping" -Method Get
+```
+
+### Altele
+```bash
 # Verificare formatare cod
 dotnet format
 

@@ -46,6 +46,45 @@ Vezi [docs/EventStorming.md](docs/EventStorming.md) pentru diagrame complete și
 
 ## Implementare
 
+### Arhitectură Event-Driven
+Sistemul folosește **Azure Service Bus** pentru comunicare asincronă între microservices:
+- **Topic**: `orders` - pentru publicarea evenimentelor
+- **Subscriptions**: `invoicing-subscription`, `shipping-subscription`
+- **Pattern**: Pub/Sub cu CloudEvents format
+- **Worker Services**: Background services care ascultă și procesează evenimente
+
+### Proiecte Implementate
+
+#### 1. OrderProcessing.Events (Abstraction Layer)
+Interfețe și abstractions pentru comunicare event-driven:
+- `IEventSender` - pentru publicarea evenimentelor
+- `IEventListener` - pentru ascultarea evenimentelor
+- `IEventHandler<T>` - pentru procesarea evenimentelor
+- `AbstractEventHandler<T>` - bază pentru handlers cu deserializare JSON
+
+#### 2. OrderProcessing.Events.ServiceBus (Implementation Layer)
+Implementare Azure Service Bus:
+- `ServiceBusTopicEventSender` - publică evenimente în topic-uri
+- `ServiceBusTopicEventListener` - ascultă subscriptions și rutează la handlers
+- Folosește **CloudEvents** standard pentru format evenimente
+
+#### 3. OrderProcessing.Dto (Shared Contracts)
+Contracte partajate între microservices:
+- `OrderPlacedEvent` - eveniment declanșat când o comandă este plasată
+- Conține: OrderId, CustomerName, CustomerEmail, OrderLines, TotalAmount
+
+#### 4. OrderProcessing.Invoicing.Worker (Background Service)
+Worker Service care ascultă evenimente și generează facturi automat:
+- Ascultă subscription: `invoicing-subscription`
+- Procesează: `OrderPlacedEvent`
+- Apelează Invoicing API pentru generare factură
+
+#### 5. OrderProcessing.Shipping.Worker (Background Service)
+Worker Service care ascultă evenimente și creează shipments automat:
+- Ascultă subscription: `shipping-subscription`
+- Procesează: `OrderPlacedEvent`
+- Apelează Shipping API pentru creare shipment
+
 ### Value Objects
 - `OrderId`: Identificator unic pentru comandă (GUID), generat automat
 - `ProductCode`: Cod produs validat (3-20 caractere, uppercase)
@@ -95,33 +134,82 @@ PlaceOrderCommand
     → PlaceOrderOperation 
     → PlacedOrder 
     → SaveToRepository 
+    → PublishOrderPlacedEvent (Azure Service Bus)
     → OrderPlacedSuccessEvent
 ```
 
+**Comunicare asincronă:**
+- După salvare, API publică `OrderPlacedEvent` în Azure Service Bus topic
+- Invoicing Worker și Shipping Worker procesează independent evenimentul
+- Fiecare worker apelează propriul API pentru a crea resurse (Invoice/Shipment)
+- Eventual consistency - workers procesează când sunt disponibili
+
 **Gestionarea erorilor:**
 - Orice excepție în pipeline → `OrderPlacedFailedEvent`
+- Retry logic în workers (max 5 încercări, apoi dead-letter queue)
 - Logging pentru fiecare pas important
 - Validări la nivel de Value Object previne stări invalide
 
 ## Rulare
 
+### Configurare Azure Service Bus (OBLIGATORIU)
+
+Înainte de rulare, configurează connection string-ul folosind User Secrets:
+
+```bash
+# Pentru API
+dotnet user-secrets set "ServiceBus:ConnectionString" "YOUR_CONNECTION_STRING" --project src/OrderProcessing.Api/OrderProcessing.Api.csproj
+
+# Pentru Invoicing Worker
+dotnet user-secrets set "ServiceBus:ConnectionString" "YOUR_CONNECTION_STRING" --project src/OrderProcessing.Invoicing.Worker/OrderProcessing.Invoicing.Worker.csproj
+
+# Pentru Shipping Worker
+dotnet user-secrets set "ServiceBus:ConnectionString" "YOUR_CONNECTION_STRING" --project src/OrderProcessing.Shipping.Worker/OrderProcessing.Shipping.Worker.csproj
+```
+
+**Vezi [AZURE_SETUP.md](AZURE_SETUP.md) pentru instrucțiuni complete de configurare Azure Service Bus.**
+
+### Pornire Servicii
+
 ```bash
 # Compilare proiect
 dotnet build
 
-# Rulare Domain Layer (pentru validare)
-dotnet build src/OrderProcessing.Domain
-
-# Rulare API (când va fi implementat)
+# Terminal 1 - Order Processing API (port 5259)
 dotnet run --project src/OrderProcessing.Api
 
-# Rulare toate microservices
-dotnet run --project src/OrderProcessing.Api &
-dotnet run --project src/OrderProcessing.InvoicingApi &
-dotnet run --project src/OrderProcessing.ShippingApi &
+# Terminal 2 - Invoicing API (port 5260)
+dotnet run --project src/OrderProcessing.Invoicing
 
-# Testare (când vor fi implementate)
-dotnet test
+# Terminal 3 - Shipping API (port 5261)
+dotnet run --project src/OrderProcessing.Shipping
+
+# Terminal 4 - Invoicing Worker (background service)
+dotnet run --project src/OrderProcessing.Invoicing.Worker
+
+# Terminal 5 - Shipping Worker (background service)
+dotnet run --project src/OrderProcessing.Shipping.Worker
+```
+
+### Testare Flow Complet
+
+```powershell
+# Plasează o comandă
+$body = @{
+    customerName = "John Doe"
+    customerEmail = "john@example.com"
+    orderLines = @(
+        @{ productCode = "LAPTOP-001"; quantity = 1 }
+    )
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:5259/api/orders" -Method Post -Body $body -ContentType "application/json"
+
+# Verifică factura generată automat
+Invoke-RestMethod -Uri "http://localhost:5260/api/invoices" -Method Get
+
+# Verifică shipment-ul creat automat
+Invoke-RestMethod -Uri "http://localhost:5261/api/shipping" -Method Get
 ```
 
 ## Lecții Învățate
@@ -157,10 +245,12 @@ dotnet test
 - **CQRS lite**: Separare read/write pentru scalabilitate viitoare
 
 ### Comunicare între Microservices
-- **Event-Driven Architecture**: Comunicare asincronă prin evenimente
-- **Message Broker** (planificat): RabbitMQ sau Azure Service Bus
-- **Retry Policies cu Polly**: Reziliență la erori de comunicare
-- **Typed HttpClient**: Pentru comunicare sincronă când e necesară
+- **Event-Driven Architecture**: ✅ Implementat - comunicare asincronă prin evenimente
+- **Azure Service Bus**: ✅ Implementat - Standard tier, France Central region
+- **CloudEvents Standard**: ✅ Folosit pentru format standardizat evenimente (CNCF)
+- **Worker Services**: ✅ Background services care procesează evenimente independent
+- **Retry Logic**: ✅ Implementat - max 5 încercări, apoi dead-letter queue
+- **Typed HttpClient**: ✅ Workers folosesc HttpClient pentru apeluri către API-uri
 
 ### Persistență
 - **Entity Framework Core**: ORM pentru simplificare CRUD

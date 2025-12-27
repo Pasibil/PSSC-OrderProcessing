@@ -14,7 +14,7 @@
    - **Resource Group**: Creează nou sau folosește existent
    - **Namespace name**: `orderprocessing-pssc` (sau alt nume unic)
    - **Location**: West Europe
-   - **Pricing tier**: **Basic** (suficient pentru curs, €0.05/1M operations)
+   - **Pricing tier**: **Standard** (necesar pentru Topics, ~€9.17/lună, șterge după curs)
    - Click "Review + Create" → "Create"
    - **Așteaptă 2-3 minute** până se creează
 
@@ -55,7 +55,7 @@ az servicebus namespace create \
   --resource-group pssc-lab \
   --name orderprocessing-pssc \
   --location westeurope \
-  --sku Basic
+  --sku Standard
 
 # Creează topic
 az servicebus topic create \
@@ -85,29 +85,35 @@ az servicebus namespace authorization-rule keys list \
   --output tsv
 ```
 
-## 2. Actualizează Connection Strings
+## 2. Configurează Connection String cu User Secrets
 
-**IMPORTANT**: Connection string-ul trebuie actualizat în **3 fișiere**:
+**IMPORTANT**: Pentru securitate, connection string-ul este salvat în **User Secrets**, NU în appsettings.json.
 
-1. `src\OrderProcessing.Api\appsettings.json`
-2. `src\OrderProcessing.Invoicing.Worker\appsettings.json`
-3. `src\OrderProcessing.Shipping.Worker\appsettings.json`
+### Configurare automată (recomandat)
 
-În toate 3, înlocuiește această linie:
-```json
-"ConnectionString": "Endpoint=sb://your-servicebus-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=your-key"
+Rulează aceste comenzi pentru cele **3 proiecte**:
+
+```bash
+# Pentru API
+dotnet user-secrets set "ServiceBus:ConnectionString" "PASTE_YOUR_CONNECTION_STRING_HERE" --project src/OrderProcessing.Api/OrderProcessing.Api.csproj
+
+# Pentru Invoicing Worker
+dotnet user-secrets set "ServiceBus:ConnectionString" "PASTE_YOUR_CONNECTION_STRING_HERE" --project src/OrderProcessing.Invoicing.Worker/OrderProcessing.Invoicing.Worker.csproj
+
+# Pentru Shipping Worker
+dotnet user-secrets set "ServiceBus:ConnectionString" "PASTE_YOUR_CONNECTION_STRING_HERE" --project src/OrderProcessing.Shipping.Worker/OrderProcessing.Shipping.Worker.csproj
 ```
 
-Cu connection string-ul tău real copiat din Azure.
+**Înlocuiește `PASTE_YOUR_CONNECTION_STRING_HERE`** cu connection string-ul tău real din Azure (din pasul 1).
 
-**Exemplu**:
-```json
-{
-  "ServiceBus": {
-    "ConnectionString": "Endpoint=sb://orderprocessing-pssc.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=ABC123XYZ..."
-  }
-}
-```
+### De ce User Secrets?
+
+- ✅ Connection string-ul nu apare pe GitHub (securitate)
+- ✅ GitHub Push Protection nu mai blochează commit-urile
+- ✅ Fiecare developer își configurează local propriile credențiale
+- ✅ Production folosește Azure Key Vault sau variabile de mediu
+
+**Vezi [AZURE_SETUP.md](../AZURE_SETUP.md) pentru detalii complete.**
 
 ## 3. Pornește Toate Serviciile
 
@@ -301,6 +307,8 @@ Sau din Portal: Delete resource group "pssc-lab"
 
 ---
 
-**Cost estimat Azure**: ~€0.01 pentru testare (câteva ore)  
+**Cost estimat Azure**: ~€0.30 pentru testare (câteva ore cu Standard tier)  
 **Timp total setup**: 10-15 minute  
-**Status cerință curs**: ✅ Comunicare asincronă implementată corect
+**Status cerință curs**: ✅ Comunicare asincronă implementată și testată cu succes  
+**Status implementare**: ✅ Event-Driven Architecture funcțională cu Azure Service Bus  
+**Status securitate**: ✅ Connection strings în User Secrets, nu pe GitHub
