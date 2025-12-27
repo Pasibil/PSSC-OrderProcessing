@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CloudNative.CloudEvents;
 using OrderProcessing.Events.Models;
@@ -11,9 +12,19 @@ namespace OrderProcessing.Events
 
         public async Task<EventProcessingResult> HandleAsync(CloudEvent cloudEvent)
         {
-            if (cloudEvent.Data is not T eventData)
+            T eventData;
+            
+            if (cloudEvent.Data is JsonElement jsonElement)
             {
-                throw new InvalidOperationException($"Expected event data of type {typeof(T).Name}");
+                eventData = JsonSerializer.Deserialize<T>(jsonElement.GetRawText())!;
+            }
+            else if (cloudEvent.Data is T typedData)
+            {
+                eventData = typedData;
+            }
+            else
+            {
+                throw new InvalidOperationException($"Expected event data of type {typeof(T).Name}, got {cloudEvent.Data?.GetType().Name}");
             }
 
             return await OnHandleAsync(eventData);
