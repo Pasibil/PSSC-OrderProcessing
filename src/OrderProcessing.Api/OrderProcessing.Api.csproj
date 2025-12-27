@@ -22,6 +22,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OrderProcessing.Domain\OrderProcessing.Domain.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Events\OrderProcessing.Events.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Events.ServiceBus\OrderProcessing.Events.ServiceBus.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Dto\OrderProcessing.Dto.csproj" />
   </ItemGroup>
 
 </Project>

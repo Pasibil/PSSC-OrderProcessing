@@ -3,6 +3,8 @@ using OrderProcessing.Api.DTOs;
 using OrderProcessing.Domain.Models;
 using OrderProcessing.Domain.Repositories;
 using OrderProcessing.Domain.Workflows;
+using OrderProcessing.Events;
+using OrderProcessing.Dto;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -14,15 +16,18 @@ namespace OrderProcessing.Api.Controllers
     {
         private readonly PlaceOrderWorkflow _placeOrderWorkflow;
         private readonly IOrdersRepository _ordersRepository;
+        private readonly IEventSender _eventSender;
         private readonly ILogger<OrdersController> _logger;
 
         public OrdersController(
             PlaceOrderWorkflow placeOrderWorkflow,
             IOrdersRepository ordersRepository,
+            IEventSender eventSender,
             ILogger<OrdersController> logger)
         {
             _placeOrderWorkflow = placeOrderWorkflow;
             _ordersRepository = ordersRepository;
+            _eventSender = eventSender;
             _logger = logger;
         }
 
@@ -54,26 +59,7 @@ namespace OrderProcessing.Api.Controllers
                 // Map result to DTO
                 return result switch
                 {
-                    OrderPlacedSuccessEvent success => Ok(new PlaceOrderResponse
-                    {
-                        Success = true,
-                        OrderId = success.Order.OrderId.Value.ToString(),
-                        OrderDetails = new OrderDetailsDto
-                        {
-                            OrderId = success.Order.OrderId.Value.ToString(),
-                            CustomerName = success.Order.CustomerInfo.Name,
-                            CustomerEmail = success.Order.CustomerInfo.Email,
-                            OrderLines = success.Order.OrderLines.Select(line => new PricedOrderLineDto
-                            {
-                                ProductCode = line.ProductCode.Value,
-                                Quantity = line.Quantity.Value,
-                                Price = line.Price.Value,
-                                LineTotal = line.LineTotal.Value
-                            }).ToList(),
-                            TotalAmount = success.Order.TotalAmount.Value,
-                            PlacedAt = success.Order.PlacedAt
-                        }
-                    }),
+                    OrderPlacedSuccessEvent success => await HandleSuccessAsync(success),
                     OrderPlacedFailedEvent failure => BadRequest(new PlaceOrderResponse
                     {
                         Success = false,
@@ -93,6 +79,60 @@ namespace OrderProcessing.Api.Controllers
                 {
                     Success = false,
                     ErrorMessage = $"Internal server error: {ex.Message}"
+                });
+            }
+        }
+
+        private async Task<ActionResult<PlaceOrderResponse>> HandleSuccessAsync(OrderPlacedSuccessEvent success)
+        {
+            try
+            {
+                // Publish event to Service Bus
+                var orderPlacedEvent = new OrderPlacedEvent(
+                    success.Order.OrderId.Value,
+                    success.Order.CustomerInfo.Name,
+                    success.Order.CustomerInfo.Email,
+                    success.Order.OrderLines.Select(line => new OrderPlacedLineDto(
+                        line.ProductCode.Value,
+                        line.Quantity.Value,
+                        line.Price.Value
+                    )).ToList(),
+                    success.Order.TotalAmount.Value
+                );
+
+                await _eventSender.SendAsync("orders", orderPlacedEvent);
+                _logger.LogInformation("Published OrderPlacedEvent for Order {OrderId}", success.Order.OrderId.Value);
+
+                return Ok(new PlaceOrderResponse
+                {
+                    Success = true,
+                    OrderId = success.Order.OrderId.Value.ToString(),
+                    OrderDetails = new OrderDetailsDto
+                    {
+                        OrderId = success.Order.OrderId.Value.ToString(),
+                        CustomerName = success.Order.CustomerInfo.Name,
+                        CustomerEmail = success.Order.CustomerInfo.Email,
+                        OrderLines = success.Order.OrderLines.Select(line => new PricedOrderLineDto
+                        {
+                            ProductCode = line.ProductCode.Value,
+                            Quantity = line.Quantity.Value,
+                            Price = line.Price.Value,
+                            LineTotal = line.LineTotal.Value
+                        }).ToList(),
+                        TotalAmount = success.Order.TotalAmount.Value,
+                        PlacedAt = success.Order.PlacedAt
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to publish OrderPlacedEvent for Order {OrderId}", success.Order.OrderId.Value);
+                // Still return success since order was placed, just event publishing failed
+                return Ok(new PlaceOrderResponse
+                {
+                    Success = true,
+                    OrderId = success.Order.OrderId.Value.ToString(),
+                    ErrorMessage = "Order placed but event publishing failed"
                 });
             }
         }

@@ -1,8 +1,11 @@
+using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using OrderProcessing.Api.Data;
 using OrderProcessing.Api.Repositories;
 using OrderProcessing.Domain.Repositories;
 using OrderProcessing.Domain.Workflows;
+using OrderProcessing.Events;
+using OrderProcessing.Events.ServiceBus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +33,11 @@ builder.Services.AddScoped<IOrdersRepository, SqlOrdersRepository>();
 
 // Register workflow
 builder.Services.AddScoped<PlaceOrderWorkflow>();
+
+// Configure Azure Service Bus
+var serviceBusConnectionString = builder.Configuration.GetValue<string>("ServiceBus:ConnectionString");
+builder.Services.AddSingleton(new ServiceBusClient(serviceBusConnectionString));
+builder.Services.AddScoped<IEventSender, ServiceBusTopicEventSender>();
 
 var app = builder.Build();
 
