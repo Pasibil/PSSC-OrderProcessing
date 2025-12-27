@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-OrderProcessing.Shipping.Worker-3ab74020-38e4-4855-968b-1a94fa4ddbd5</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.8" />
+    <PackageReference Include="System.Net.Http.Json" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OrderProcessing.Events\OrderProcessing.Events.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Events.ServiceBus\OrderProcessing.Events.ServiceBus.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Dto\OrderProcessing.Dto.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Shipping\OrderProcessing.Shipping.csproj" />
+  </ItemGroup>
+</Project>
