@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-OrderProcessing.Invoicing.Worker-bad7bfa0-7ee1-4c0f-922c-decf87934c53</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.8" />
+    <PackageReference Include="System.Net.Http.Json" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OrderProcessing.Events\OrderProcessing.Events.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Events.ServiceBus\OrderProcessing.Events.ServiceBus.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Dto\OrderProcessing.Dto.csproj" />
+    <ProjectReference Include="..\OrderProcessing.Invoicing\OrderProcessing.Invoicing.csproj" />
+  </ItemGroup>
+</Project>
